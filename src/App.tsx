@@ -85,6 +85,44 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'generator' | 'goal'>('analytics')
   const [tone, setTone] = useState<Tone>('study')
   const [genTopic, setGenTopic] = useState('')
+  // 실시간 fetch — araha-ming 서버의 X API proxy 호출
+  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('ff_ming_api') || 'http://localhost:4001')
+  const [userId, setUserId] = useState('2058870911382511616')  // @mweng_1004
+  const [fetching, setFetching] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+
+  async function fetchLive(): Promise<void> {
+    setFetching(true)
+    setFetchError(null)
+    try {
+      localStorage.setItem('ff_ming_api', apiUrl)
+      const url = `${apiUrl.replace(/\/$/, '')}/api/twitter/tweets?user_id=${userId}&max_results=100`
+      const r = await fetch(url)
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const data = await r.json() as { data?: Array<{
+        id: string; text: string; created_at: string;
+        public_metrics?: { impression_count?: number; like_count: number; retweet_count: number; reply_count: number; quote_count: number; bookmark_count?: number }
+        non_public_metrics?: { impression_count?: number; url_link_clicks?: number; user_profile_clicks?: number }
+        organic_metrics?: { impression_count?: number; like_count?: number; retweet_count?: number; reply_count?: number; bookmark_count?: number }
+      }> }
+      if (!data.data) throw new Error('No tweets in response')
+      const parsed: Tweet[] = data.data.map((t) => ({
+        date: t.created_at,
+        text: t.text,
+        // 우선순위: organic > non_public > public (정확도 순)
+        impressions: t.organic_metrics?.impression_count ?? t.non_public_metrics?.impression_count ?? t.public_metrics?.impression_count ?? 0,
+        likes: t.organic_metrics?.like_count ?? t.public_metrics?.like_count ?? 0,
+        retweets: t.organic_metrics?.retweet_count ?? t.public_metrics?.retweet_count ?? 0,
+        replies: t.organic_metrics?.reply_count ?? t.public_metrics?.reply_count ?? 0,
+        bookmarks: t.organic_metrics?.bookmark_count ?? t.public_metrics?.bookmark_count ?? 0,
+      }))
+      setTweets(parsed)
+    } catch (e) {
+      setFetchError((e as Error).message)
+    } finally {
+      setFetching(false)
+    }
+  }
 
   function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -177,8 +215,28 @@ export default function App() {
 
       {tweets.length === 0 ? (
         <div className="upload-card">
-          <h2>📤 CSV 업로드</h2>
-          <p>X analytics 에서 받은 CSV 파일 업로드</p>
+          <h2>🚀 실시간 자동 fetch (X API 통합)</h2>
+          <p>araha-ming 서버를 통해 본인 트윗 자동 가져오기</p>
+          <label style={{ display: 'block', marginTop: 12, fontSize: 12, color: '#666' }}>
+            ming 서버 URL
+            <input type="text" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)}
+              style={{ width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #ddd', fontSize: 12 }} />
+          </label>
+          <label style={{ display: 'block', marginTop: 8, fontSize: 12, color: '#666' }}>
+            X 사용자 ID (기본 = @mweng_1004)
+            <input type="text" value={userId} onChange={(e) => setUserId(e.target.value)}
+              style={{ width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #ddd', fontSize: 12 }} />
+          </label>
+          <button onClick={fetchLive} disabled={fetching}
+            style={{ marginTop: 12, padding: '10px 20px', borderRadius: 8, border: 'none', background: '#E8849D', color: '#fff', fontSize: 13, fontWeight: 700, cursor: fetching ? 'wait' : 'pointer' }}>
+            {fetching ? '⏳ fetch 중...' : '🐦 실시간 fetch'}
+          </button>
+          {fetchError && <div className="error" style={{ marginTop: 10 }}>fetch 실패: {fetchError}</div>}
+
+          <hr style={{ margin: '24px 0', border: 0, borderTop: '1px solid #eee' }} />
+
+          <h2>📤 또는 CSV 업로드</h2>
+          <p>X analytics 에서 받은 CSV 파일</p>
           <input type="file" accept=".csv" onChange={handleUpload} />
           {error && <div className="error">{error}</div>}
           <details>

@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
+// GitHub Pages base path — https://shy420-ai.github.io/twitter-analytics/
 export default defineConfig({
+  base: '/twitter-analytics/',
   plugins: [react()],
 })
